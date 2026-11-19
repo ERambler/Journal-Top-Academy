@@ -96,6 +96,8 @@ public class MainActivity : Activity
             host.Visibility = ViewStates.Visible;
         }
 
+        _name.Click += (_, _) => ShowSettings();
+        _group.Click += (_, _) => ShowSettings();
         _tabGrades.Click += (_, _) => SwitchTab(0);
         _tabSchedule.Click += (_, _) => SwitchTab(1);
         _tabHomework.Click += (_, _) => SwitchTab(2);
@@ -136,6 +138,43 @@ public class MainActivity : Activity
 
         // проверка обновления — один раз за запуск (GitHub Releases)
         _ = CheckForUpdateAsync();
+    }
+
+    /// <summary>Модалка настроек (тап по имени студента): размер шрифта виджета.</summary>
+    void ShowSettings()
+    {
+        int current = Store.GetWidgetFont(this);
+
+        var box = new LinearLayout(this) { Orientation = Orientation.Vertical };
+        box.SetPadding(Dp(22), Dp(16), Dp(22), Dp(8));
+
+        var label = new TextView(this) { Text = "Размер шрифта виджета:", TextSize = 13 };
+        label.SetTextColor(C(Resource.Color.ink));
+        box.AddView(label);
+
+        var rg = new RadioGroup(this);
+        var labels = new[] { "Малый", "Средний", "Большой" };
+        var radios = new RadioButton[3];
+        for (int i = 0; i < 3; i++)
+        {
+            radios[i] = new RadioButton(this) { Text = labels[i], TextSize = 15 };
+            radios[i].Checked = i == current;
+            rg.AddView(radios[i]);
+        }
+        box.AddView(rg);
+
+        new AlertDialog.Builder(this)
+            .SetTitle("Настройки")
+            .SetView(box)
+            .SetNegativeButton("Отмена", (_, _) => { })
+            .SetPositiveButton("Принять", (_, _) =>
+            {
+                for (int i = 0; i < 3; i++)
+                    if (radios[i].Checked) { Store.SetWidgetFont(this, i); break; }
+                JournalWidget.RenderAll(this);
+                Toast.MakeText(this, "Применено — виджет обновлён", ToastLength.Short)?.Show();
+            })
+            .Show();
     }
 
     async Task CheckForUpdateAsync()

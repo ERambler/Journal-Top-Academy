@@ -54,6 +54,8 @@ public class JournalWidget : AppWidgetProvider
                 SetHomeworkLines(views, snap);
             }
 
+            ApplyFontSizes(views, context);
+
             var intent = new Intent(context, typeof(MainActivity));
             var pi = PendingIntent.GetActivity(context, 1, intent,
                 PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
@@ -61,6 +63,26 @@ public class JournalWidget : AppWidgetProvider
 
             mgr.UpdateAppWidget(id, views);
         }
+    }
+
+    /// <summary>Размер шрифта виджета из настроек: малый −2sp · средний база · большой +2sp.</summary>
+    static void ApplyFontSizes(RemoteViews views, Context context)
+    {
+        float k = Store.GetWidgetFont(context) switch { 0 => -2, 2 => +2, _ => 0 };
+        void Sz(int viewId, float baseSp) =>
+            views.SetTextViewTextSize(viewId, (int)Android.Util.ComplexUnitType.Sp, baseSp + k);
+
+        Sz(Resource.Id.wName, 13);
+        Sz(Resource.Id.wTime, 10);
+        Sz(Resource.Id.wAvg, 24);
+        Sz(Resource.Id.wAttend, 11);
+        Sz(Resource.Id.wHw, 11);
+        Sz(Resource.Id.wSchedTitle, 10);
+        Sz(Resource.Id.wSched1, 10);
+        Sz(Resource.Id.wSched2, 10);
+        Sz(Resource.Id.wHwTitle, 10);
+        Sz(Resource.Id.wHw1, 10);
+        Sz(Resource.Id.wHw2, 10);
     }
 
     static string HwSummary(Snapshot snap)

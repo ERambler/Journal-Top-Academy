@@ -42,6 +42,16 @@ public static class Store
     public static string? GetRefreshToken(Context ctx) =>
         ctx.GetSharedPreferences(PrefsName, FileCreationMode.Private)!.GetString("refresh", null);
 
+    // ------------------------------------------------- настройки виджета
+
+    /// <summary>Размер шрифта виджета: 0 малый · 1 средний (умолчание) · 2 большой.</summary>
+    public static int GetWidgetFont(Context ctx) =>
+        ctx.GetSharedPreferences(PrefsName, FileCreationMode.Private)!.GetInt("widget_font", 1);
+
+    public static void SetWidgetFont(Context ctx, int value) =>
+        ctx.GetSharedPreferences(PrefsName, FileCreationMode.Private)!.Edit()!
+            .PutInt("widget_font", value).Apply();
+
     // ------------------------------------------------------------- snapshot
 
     static string SnapshotPath(Context ctx) =>
