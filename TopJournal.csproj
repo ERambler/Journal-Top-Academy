@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>26</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <ApplicationId>ru.family.topjournal</ApplicationId>
+    <ApplicationVersion>3</ApplicationVersion>
+    <ApplicationDisplayVersion>1.2</ApplicationDisplayVersion>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TargetSdkVersion>35</TargetSdkVersion>
+    <AndroidUseLatestPlatformSdk>false</AndroidUseLatestPlatformSdk>
+    <!-- APK сразу, без AAB -->
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <!-- Полный самодостаточный APK даже в Debug: без Fast Deployment
+         (иначе сборки .NET кладутся только через adb install из IDE,
+         и APK, поставленный файлом, падает при старте) -->
+    <AndroidFastDeployment>false</AndroidFastDeployment>
+  </PropertyGroup>
+
+</Project>

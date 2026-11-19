@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Тёмная тема (включается системой при Night Mode). -->
+  <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">
+    <item name="android:colorAccent">@color/accent</item>
+    <item name="android:statusBarColor">@color/statusBar</item>
+    <item name="android:navigationBarColor">@color/statusBar</item>
+    <item name="android:windowBackground">@color/windowBg</item>
+  </style>
+  <style name="AppTheme.Dark" parent="android:Theme.Material.NoActionBar">
+    <item name="android:colorAccent">@color/accent</item>
+    <item name="android:statusBarColor">@color/statusBar</item>
+    <item name="android:navigationBarColor">@color/statusBar</item>
+    <item name="android:windowBackground">@color/windowBg</item>
+    <item name="android:colorBackgroundFloating">@color/cardBg</item>
+    <item name="android:windowIsFloating">false</item>
+  </style>
+</resources>

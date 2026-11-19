@@ -1,0 +1,12 @@
+# сборочные артефакты
+bin/
+obj/
+*.apk
+*.aab
+build*.log
+*.smartedit-bak
+*.user
+
+# локальные проверки/скриншоты
+*.png
+phone_screen*.png

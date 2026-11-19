@@ -1,0 +1,40 @@
+name: build-apk
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Кэш Android-паков .NET
+        uses: actions/cache@v4
+        with:
+          path: ~/.dotnet
+          key: dotnet-android-${{ runner.os }}-v1
+
+      - name: Установить Android workload
+        run: dotnet workload install android
+
+      - name: Сборка Release APK
+        env:
+          DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+        run: dotnet build -c Release -v q -nologo
+
+      - name: Artifact — APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TopJournal-apk
+          path: bin/Release/net9.0-android/ru.family.topjournal-Signed.apk
+          if-no-files-found: error

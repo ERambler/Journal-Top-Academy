@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <string name="app_name">Журнал ТОП</string>
+  <string name="widget_desc">Сводка успеваемости: средний балл, посещаемость, ДЗ</string>
+</resources>

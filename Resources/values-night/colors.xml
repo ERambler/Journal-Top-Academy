@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Тёмная палитра — имена 1:1 с values/colors.xml. -->
+  <color name="windowBg">#12151C</color>
+  <color name="statusBar">#0D0F15</color>
+  <color name="cardBg">#1B2130</color>
+  <color name="ink">#E8EAF2</color>
+  <color name="inkSecondary">#9AA3B8</color>
+  <color name="accent">#7C9BFF</color>
+
+  <color name="tabActive">#7C9BFF</color>
+  <color name="tabIdle">#6A7186</color>
+  <color name="tabActiveBg">#26304A</color>
+  <color name="tabBarBg">#1B2130</color>
+
+  <color name="gridLine">#2A3247</color>
+  <color name="gridHeaderBg">#26304A</color>
+  <color name="rowAlt">#202739</color>
+  <color name="todayChipBg">#2C3A5C</color>
+
+  <color name="mark5">#4CC38A</color>
+  <color name="mark4">#8FC94F</color>
+  <color name="mark3">#E8B93E</color>
+  <color name="mark2">#F26D6D</color>
+  <color name="absent">#F26D6D</color>
+  <color name="late">#F2994A</color>
+
+  <color name="hwOverdueBg">#3A2226</color>
+  <color name="hwOverdueInk">#FF8A80</color>
+  <color name="hwTodayBg">#3A2F1D</color>
+  <color name="hwTodayInk">#FFC46B</color>
+  <color name="hwCheckBg">#262C3D</color>
+  <color name="hwCheckInk">#9AA3B8</color>
+</resources>
