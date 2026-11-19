@@ -11,7 +11,7 @@ public static class Store
 {
     const string PrefsName = "topjournal";
     const string SnapshotFile = "snapshot.json";
-    static readonly JsonSerializerOptions JsonOpts = new() { WriteIndented = true };
+    // JSON без рефлексии (Source Generator) — переживает PublishTrimmed
 
     // ---------------------------------------------------------------- creds
 
@@ -60,7 +60,7 @@ public static class Store
     public static void SaveSnapshot(Context ctx, Snapshot snap)
     {
         snap.SavedAt = DateTime.Now.ToString("dd.MM HH:mm");
-        File.WriteAllText(SnapshotPath(ctx), JsonSerializer.Serialize(snap, JsonOpts));
+        File.WriteAllText(SnapshotPath(ctx), JsonSerializer.Serialize(snap, AppJson.Default.Snapshot));
     }
 
     public static Snapshot? LoadSnapshot(Context ctx)
@@ -69,7 +69,7 @@ public static class Store
         {
             var path = SnapshotPath(ctx);
             if (!File.Exists(path)) return null;
-            return JsonSerializer.Deserialize<Snapshot>(File.ReadAllText(path), JsonOpts);
+            return JsonSerializer.Deserialize(File.ReadAllText(path), AppJson.Default.Snapshot);
         }
         catch { return null; }
     }

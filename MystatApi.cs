@@ -14,7 +14,7 @@ public sealed class MystatApi
     public const string BaseUrl = "https://msapi.top-academy.ru/api/v2/";
     public const string AppKey = "6a56a5df2667e65aab73ce76d1dd737f7d1faef9c52e8b8c55ac75f565d8e8a6";
 
-    static readonly JsonSerializerOptions JsonOpts = new() { PropertyNameCaseInsensitive = true };
+    // JSON — через Source Generator (AppJson), совместимо с PublishTrimmed
 
     readonly HttpClient _http;
     Tokens? _tokens;
@@ -39,7 +39,8 @@ public sealed class MystatApi
         var body = new { username, password, application_key = AppKey };
         var resp = await _http.PostAsJsonAsync("auth/login", body);
         resp.EnsureSuccessStatusCode();
-        var tokens = await resp.Content.ReadFromJsonAsync<Tokens>(JsonOpts)
+        var tokens = JsonSerializer.Deserialize<Tokens>(
+            await resp.Content.ReadAsStringAsync(), AppJson.Default.Tokens)
                      ?? throw new InvalidOperationException("пустой ответ auth/login");
         _tokens = tokens;
         SavedLogin = username;
@@ -52,7 +53,8 @@ public sealed class MystatApi
         if (string.IsNullOrEmpty(refreshToken)) return false;
         var resp = await _http.PostAsJsonAsync("auth/refresh", new { refresh_token = refreshToken });
         if (!resp.IsSuccessStatusCode) return false;
-        var tokens = await resp.Content.ReadFromJsonAsync<Tokens>(JsonOpts);
+        var tokens = JsonSerializer.Deserialize<Tokens>(
+            await resp.Content.ReadAsStringAsync(), AppJson.Default.Tokens);
         if (tokens is null) return false;
         _tokens = tokens;
         return true;
@@ -82,7 +84,8 @@ public sealed class MystatApi
 
     // ------------------------------------------------------------------ data
 
-    async Task<T?> GetAsync<T>(string ep, string? query = null) where T : class
+    async Task<T?> GetAsync<T>(string ep, System.Text.Json.Serialization.Metadata.JsonTypeInfo<T> typeInfo, string? query = null)
+        where T : class
     {
         if (_tokens is null) throw new InvalidOperationException("не авторизован");
         var url = query is null ? ep : $"{ep}?{query}";
@@ -90,29 +93,29 @@ public sealed class MystatApi
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _tokens.AccessToken);
         using var resp = await _http.SendAsync(req);
         resp.EnsureSuccessStatusCode();
-        if (typeof(T) == typeof(string))
-            return (await resp.Content.ReadAsStringAsync()) as T;
         var body = await resp.Content.ReadAsStringAsync();
-        return JsonSerializer.Deserialize<T>(body, JsonOpts);
+        return JsonSerializer.Deserialize(body, typeInfo);
     }
 
-    public Task<List<VisitDto>?> GetVisitsAsync() => GetAsync<List<VisitDto>>("progress/operations/student-visits");
+    public Task<List<VisitDto>?> GetVisitsAsync() =>
+        GetAsync("progress/operations/student-visits", AppJson.Default.ListVisitDto);
 
     public Task<List<HomeworkDto>?> GetHomeworkAsync(int? status = null) =>
-        GetAsync<List<HomeworkDto>>("homework/operations/list",
+        GetAsync("homework/operations/list", AppJson.Default.ListHomeworkDto,
             status is null ? null : $"status={status}");
 
     public async Task<Dictionary<int, int>> GetCountersAsync()
     {
-        var rows = await GetAsync<List<CounterDto>>("count/homework") ?? new List<CounterDto>();
+        var rows = await GetAsync("count/homework", AppJson.Default.ListCounterDto) ?? new List<CounterDto>();
         return rows.ToDictionary(r => r.CounterType, r => r.Counter);
     }
 
     public Task<List<ScheduleDto>?> GetScheduleRangeAsync(DateTime start, DateTime end) =>
-        GetAsync<List<ScheduleDto>>("schedule/operations/get-by-date-range",
+        GetAsync("schedule/operations/get-by-date-range", AppJson.Default.ListScheduleDto,
             $"date_start={start:yyyy-MM-dd}&date_end={end:yyyy-MM-dd}");
 
-    public Task<UserInfo?> GetUserInfoAsync() => GetAsync<UserInfo>("settings/user-info");
+    public Task<UserInfo?> GetUserInfoAsync() =>
+        GetAsync("settings/user-info", AppJson.Default.UserInfo);
 
     public Tokens? CurrentTokens => _tokens;
 }

@@ -14,6 +14,14 @@
     <AndroidUseLatestPlatformSdk>false</AndroidUseLatestPlatformSdk>
     <!-- APK сразу, без AAB -->
     <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <!-- Минимальный размер APK:
+         только arm64 (x86_64 выбрасывается), Mono-интерпретатор вместо AOT-образов
+         (все libaot-*.so уходят), обрезка BCL триммером, инвариантная глобализация
+         без ICU. JSON — Source Generator (AppJson), иначе триммер вырежет рефлексию. -->
+    <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
+    <RunAOTCompilation>false</RunAOTCompilation>
+    <PublishTrimmed>true</PublishTrimmed>
+    <InvariantGlobalization>true</InvariantGlobalization>
     <!-- Полный самодостаточный APK даже в Debug: без Fast Deployment
          (иначе сборки .NET кладутся только через adb install из IDE,
          и APK, поставленный файлом, падает при старте) -->
