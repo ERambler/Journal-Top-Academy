@@ -38,7 +38,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: TopJournal-apk
-          path: bin/Release/net9.0-android/ru.family.topjournal-Signed.apk
+          path: bin/Release/net9.0-android/ru.erambler.topjournal-Signed.apk
           if-no-files-found: error
 
       # Release с APK + changelog-секцией из CHANGELOG.md — только на тег vX.Y
@@ -60,5 +60,5 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: bin/Release/net9.0-android/ru.family.topjournal-Signed.apk
+          files: bin/Release/net9.0-android/ru.erambler.topjournal-Signed.apk
           body_path: release_notes.md

@@ -23,9 +23,8 @@ public class MainActivity : Activity
     static readonly string[] DayNames =
         { "воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота" };
 
-    const int SubjWidthDp = 108;   // ширина закреплённой колонки предметов
     const int DateWidthDp = 42;    // ширина ячейки даты
-    const int RowHeightDp = 40;    // фиксированная высота строки таблицы
+    const int RowHeightDp = 32;    // базовая высота строки (1 строка текста)
 
     TextView? _name;
     TextView? _group;
@@ -35,6 +34,8 @@ public class MainActivity : Activity
     TextView? _tabHomework;
     TextView? _emptyHint;
     LinearLayout? _gradesRoot;
+    TextView? _gradesCorner;
+    LinearLayout? _gradesSummary;
     LinearLayout? _gradesHeaderRow;
     HorizontalScrollView? _gradesHeaderScroll;
     HorizontalScrollView? _gradesGridScroll;
@@ -68,6 +69,8 @@ public class MainActivity : Activity
         _tabHomework = FindViewById<TextView>(Resource.Id.tabHomework)!;
         _emptyHint = FindViewById<TextView>(Resource.Id.emptyHint)!;
         _gradesRoot = FindViewById<LinearLayout>(Resource.Id.gradesRoot)!;
+        _gradesCorner = FindViewById<TextView>(Resource.Id.gradesCorner)!;
+        _gradesSummary = FindViewById<LinearLayout>(Resource.Id.gradesSummary)!;
         _gradesHeaderRow = FindViewById<LinearLayout>(Resource.Id.gradesHeaderRow)!;
         _gradesHeaderScroll = FindViewById<HorizontalScrollView>(Resource.Id.gradesHeaderScroll)!;
         _gradesGridScroll = FindViewById<HorizontalScrollView>(Resource.Id.gradesGridScroll)!;
@@ -77,6 +80,21 @@ public class MainActivity : Activity
         _scheduleList = FindViewById<LinearLayout>(Resource.Id.scheduleList)!;
         _hwScroll = FindViewById<ScrollView>(Resource.Id.hwScroll)!;
         _hwList = FindViewById<LinearLayout>(Resource.Id.hwList)!;
+
+        // в альбомной ориентации вкладки переезжают в шапку: больше строк таблицы на экране
+        if (Resources!.Configuration.Orientation == Android.Content.Res.Orientation.Landscape)
+        {
+            var host = FindViewById<LinearLayout>(Resource.Id.tabsInHeader)!;
+            var tabBar = FindViewById<LinearLayout>(Resource.Id.tabBar)!;
+            foreach (var tab in new[] { _tabGrades!, _tabSchedule!, _tabHomework! })
+            {
+                ((ViewGroup)tab.Parent!).RemoveView(tab);
+                tab.SetPadding(0, Dp(10), 0, Dp(10));
+                host.AddView(tab, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
+            }
+            tabBar.Visibility = ViewStates.Gone;
+            host.Visibility = ViewStates.Visible;
+        }
 
         _tabGrades.Click += (_, _) => SwitchTab(0);
         _tabSchedule.Click += (_, _) => SwitchTab(1);
@@ -247,9 +265,27 @@ public class MainActivity : Activity
         _gradesHeaderRow!.RemoveAllViews();
         _subjectsTable!.RemoveAllViews();
         _gradesTable!.RemoveAllViews();
+        _gradesSummary!.RemoveAllViews();
 
         var dates = snap.Visits.Select(v => v.DateVisit).Distinct().OrderBy(d => d).ToList();
         var subjects = snap.Visits.Select(v => v.SpecName).Distinct().OrderBy(s => s).ToList();
+
+        // --- адаптивная ширина колонки предметов: 80% названий в одну строку,
+        //     остальные переносятся на вторую; потолок — 42% ширины экрана
+        var probe = new TextView(this) { TextSize = 10 };
+        var paint = probe.Paint!;
+        var density = Resources!.DisplayMetrics!.Density;
+        var nameWidths = subjects
+            .Select(s => paint.MeasureText(s) / density)
+            .OrderBy(w => w)
+            .ToList();
+        int idx80 = Math.Clamp((int)Math.Ceiling(nameWidths.Count * 0.8) - 1, 0, Math.Max(0, nameWidths.Count - 1));
+        int screenDp = (int)(Resources.DisplayMetrics.WidthPixels / density);
+        int subjWidth = Math.Clamp((int)nameWidths[idx80] + 16, 108, Math.Max(120, screenDp * 42 / 100));
+        float fitPx = Dp(subjWidth - 16); // запас на горизонтальные паддинги
+
+        // угловая ячейка шапки — той же ширины, что колонка предметов
+        _gradesCorner!.LayoutParameters = new LinearLayout.LayoutParams(Dp(subjWidth), Dp(32));
 
         // шапка дат (скроллится синхронно с сеткой)
         foreach (var d in dates)
@@ -272,6 +308,8 @@ public class MainActivity : Activity
         {
             int rowBg = C(i % 2 == 1 ? Resource.Color.rowAlt : Resource.Color.cardBg);
             var subject = subjects[i];
+            bool oneLine = paint.MeasureText(subject) <= fitPx;
+            int rowH = Dp(oneLine ? RowHeightDp : RowHeightDp + 12); // 32 / 44dp
 
             // закреплённая колонка предмета
             var stv = new TextView(this)
@@ -282,17 +320,17 @@ public class MainActivity : Activity
             };
             stv.SetTextColor(C(Resource.Color.ink));
             stv.Ellipsize = TextUtils.TruncateAt.End;
-            stv.SetMaxLines(2);
+            stv.SetMaxLines(oneLine ? 1 : 2);
             stv.SetPadding(Dp(8), 0, Dp(4), 0);
             stv.Background = CellDrawable(rowBg);
             var srow = new TableRow(this);
-            srow.AddView(stv, new TableRow.LayoutParams(Dp(SubjWidthDp), Dp(RowHeightDp)));
+            srow.AddView(stv, new TableRow.LayoutParams(Dp(subjWidth), rowH));
             srow.Clickable = true;
             srow.Click += (_, _) => ShowSubject(subject);
             _subjectsTable.AddView(srow, new TableLayout.LayoutParams(
-                ViewGroup.LayoutParams.WrapContent, Dp(RowHeightDp)));
+                ViewGroup.LayoutParams.WrapContent, rowH));
 
-            // строка сетки оценок
+            // строка сетки оценок — той же высоты, что и колонка предмета
             var grow = new TableRow(this);
             grow.Clickable = true;
             grow.Click += (_, _) => ShowSubject(subject);
@@ -326,28 +364,79 @@ public class MainActivity : Activity
                 tv.SetTextColor(color);
                 if (marks.Count > 0 || text.Length > 0) tv.SetTypeface(null, TypefaceStyle.Bold);
                 tv.Background = CellDrawable(rowBg);
-                grow.AddView(tv, new TableRow.LayoutParams(Dp(DateWidthDp), Dp(RowHeightDp)));
+                grow.AddView(tv, new TableRow.LayoutParams(Dp(DateWidthDp), rowH));
             }
             _gradesTable.AddView(grow, new TableLayout.LayoutParams(
-                ViewGroup.LayoutParams.WrapContent, Dp(RowHeightDp)));
+                ViewGroup.LayoutParams.WrapContent, rowH));
         }
 
-        // легенда
+        BuildGradesSummary(snap);
+
+        // к свежим датам (таблица тяжёлая — даём время на замер ширины)
+        void ScrollToFresh()
+        {
+            _gradesGridScroll!.FullScroll(FocusSearchDirection.Right);
+            _gradesHeaderScroll!.FullScroll(FocusSearchDirection.Right);
+        }
+        _gradesGridScroll!.PostDelayed(ScrollToFresh, 150);
+        _gradesGridScroll.PostDelayed(ScrollToFresh, 400); // контрольный повтор
+    }
+
+    /// <summary>Итоги под таблицей: всего прогулов/опозданий + разбивка по предметам.</summary>
+    void BuildGradesSummary(Snapshot snap)
+    {
+        var box = _gradesSummary!;
+        int totalAbs = snap.Visits.Count(v => v.StatusWas == 0);
+        int totalLate = snap.Visits.Count(v => v.StatusWas == 2);
+
+        var title = new TextView(this)
+        {
+            Text = $"ИТОГО прогулов: {totalAbs} / опозданий: {totalLate}",
+            TextSize = 13,
+        };
+        title.SetTextColor(C(Resource.Color.ink));
+        title.SetTypeface(null, TypefaceStyle.Bold);
+        title.SetPadding(Dp(4), Dp(12), Dp(4), Dp(2));
+        box.AddView(title);
+
+        var perSubject = snap.Visits
+            .GroupBy(v => v.SpecName)
+            .Select(g => (Name: g.Key,
+                Abs: g.Count(v => v.StatusWas == 0),
+                Late: g.Count(v => v.StatusWas == 2)))
+            .Where(x => x.Abs > 0 || x.Late > 0)
+            .OrderByDescending(x => x.Abs + x.Late)
+            .ThenBy(x => x.Name)
+            .ToList();
+
+        if (perSubject.Count > 0)
+        {
+            var caption = new TextView(this)
+            {
+                Text = "Прогулов / опозданий по предметам:",
+                TextSize = 11,
+            };
+            caption.SetTextColor(C(Resource.Color.inkSecondary));
+            caption.SetPadding(Dp(4), Dp(8), Dp(4), Dp(2));
+            box.AddView(caption);
+
+            foreach (var s in perSubject)
+            {
+                var line = new TextView(this) { Text = $"{s.Name} — {s.Abs} / {s.Late}", TextSize = 12 };
+                line.SetTextColor(C(Resource.Color.ink));
+                line.SetPadding(Dp(12), Dp(2), Dp(4), Dp(2));
+                box.AddView(line);
+            }
+        }
+
         var legend = new TextView(this)
         {
             Text = "П — прогул · О — опоздание · нажмите на строку для деталей",
             TextSize = 10,
         };
         legend.SetTextColor(C(Resource.Color.inkSecondary));
-        legend.SetPadding(Dp(8), Dp(10), Dp(8), Dp(6));
-        _gradesTable.AddView(legend);
-
-        // к свежим датам
-        _gradesGridScroll!.Post(() =>
-        {
-            _gradesGridScroll.FullScroll(FocusSearchDirection.Right);
-            _gradesHeaderScroll!.FullScroll(FocusSearchDirection.Right);
-        });
+        legend.SetPadding(Dp(4), Dp(10), Dp(4), Dp(6));
+        box.AddView(legend);
     }
 
     GradientDrawable CellDrawable(int fillArgb)
@@ -707,13 +796,13 @@ public class MainActivity : Activity
             if (hasMaterial)
             {
                 var b = new Button(this) { Text = "📄 Материал" };
-                b.Click += (_, _) => DownloadFile(h.FilePath!, h.NameSpec);
+                b.Click += async (_, _) => await DownloadFileAsync(h.FilePath!, h.NameSpec);
                 row.AddView(b, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f) { RightMargin = Dp(6) });
             }
             if (hasStudentFile)
             {
                 var b2 = new Button(this) { Text = "📎 Моя работа" };
-                b2.Click += (_, _) => DownloadFile(h.Stud!.FilePath!, h.NameSpec);
+                b2.Click += async (_, _) => await DownloadFileAsync(h.Stud!.FilePath!, h.NameSpec);
                 row.AddView(b2, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f));
             }
             box.AddView(row);
@@ -736,15 +825,43 @@ public class MainActivity : Activity
     static string Fmt(string iso) =>
         DateTime.TryParse(iso, out var d) ? d.ToString("dd.MM.yyyy") : iso;
 
-    /// <summary>Скачивание файла ДЗ через DownloadManager (с Referer для WAF).</summary>
-    void DownloadFile(string url, string title)
+    /// <summary>
+    /// Скачивание файла ДЗ: fs.top-academy.ru отвечает 302 на подписанный S3-URL,
+    /// а S3 отдаёт octet-stream без имени — поэтому сначала резолвим редирект,
+    /// вытаскиваем имя файла и задаём правильный MIME по расширению.
+    /// </summary>
+    async Task DownloadFileAsync(string url, string title)
     {
+        string filename = title;
+        string mime = "application/octet-stream";
+        try
+        {
+            using var http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+            {
+                Timeout = TimeSpan.FromSeconds(15),
+            };
+            var probe = new HttpRequestMessage(HttpMethod.Get, url);
+            probe.Headers.Referrer = new Uri("https://journalka.top-academy.ru/");
+            using var resp = await http.SendAsync(probe);
+            if (resp.Headers.Location is { } loc)
+            {
+                var name = ExtractFilename(loc.ToString());
+                if (!string.IsNullOrEmpty(name))
+                {
+                    filename = name;
+                    mime = MimeForExtension(name);
+                }
+            }
+        }
+        catch { /* не смогли разрезолвить — скачаем как есть */ }
+
         try
         {
             var req = new DownloadManager.Request(Android.Net.Uri.Parse(url));
             req.AddRequestHeader("Referer", "https://journalka.top-academy.ru/");
-            req.SetTitle("Журнал ТОП: " + title);
-            req.SetDescription(url);
+            req.SetTitle(filename);
+            req.SetDescription(title);
+            req.SetMimeType(mime);
             req.SetNotificationVisibility(Android.App.DownloadVisibility.VisibleNotifyCompleted);
             req.SetAllowedOverMetered(true);
             var dm = (DownloadManager)GetSystemService(DownloadService)!;
@@ -756,6 +873,46 @@ public class MainActivity : Activity
             Toast.MakeText(this, "Не удалось начать загрузку: " + ex.Message, ToastLength.Long)?.Show();
         }
     }
+
+    /// <summary>Имя файла из подписанного S3-URL (response-content-disposition).</summary>
+    static string? ExtractFilename(string url)
+    {
+        // filename*=utf-8''%D0%97...docx  |  filename="...docx"  |  последний сегмент пути
+        var q = url[(url.IndexOf('?') + 1)..];
+        foreach (var seg in q.Split('&'))
+        {
+            if (seg.StartsWith("filename*=utf-8''", StringComparison.OrdinalIgnoreCase))
+                return System.Net.WebUtility.UrlDecode(seg["filename*=utf-8''".Length..]);
+            if (seg.StartsWith("filename=", StringComparison.OrdinalIgnoreCase))
+            {
+                var v = seg["filename=".Length..].Trim('"');
+                return System.Net.WebUtility.UrlDecode(v);
+            }
+        }
+        var path = url.Split('?')[0];
+        var last = path[(path.LastIndexOf('/') + 1)..];
+        return last.Contains('.') ? last : null;
+    }
+
+    static string MimeForExtension(string filename) =>
+        filename[(filename.LastIndexOf('.') + 1)..].ToLowerInvariant() switch
+        {
+            "pdf" => "application/pdf",
+            "doc" => "application/msword",
+            "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "xls" => "application/vnd.ms-excel",
+            "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "ppt" => "application/vnd.ms-powerpoint",
+            "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            "txt" => "text/plain",
+            "zip" => "application/zip",
+            "rar" => "application/vnd.rar",
+            "jpg" or "jpeg" => "image/jpeg",
+            "png" => "image/png",
+            "gif" => "image/gif",
+            "mp4" => "video/mp4",
+            _ => "application/octet-stream",
+        };
 
     // -------------------------------------------------------------- utils
 

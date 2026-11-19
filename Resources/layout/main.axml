@@ -4,15 +4,15 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-  <!-- Шапка: студент + обновить -->
+  <!-- Шапка: студент + (в альбомной ориентации вкладки) + обновить -->
   <LinearLayout
       android:orientation="horizontal"
       android:layout_width="match_parent"
       android:layout_height="wrap_content"
       android:gravity="center_vertical"
       android:paddingHorizontal="16dp"
-      android:paddingTop="14dp"
-      android:paddingBottom="10dp">
+      android:paddingTop="12dp"
+      android:paddingBottom="8dp">
 
     <LinearLayout
         android:orientation="vertical"
@@ -27,7 +27,9 @@
           android:text="…"
           android:textSize="17sp"
           android:textStyle="bold"
-          android:textColor="@color/ink" />
+          android:textColor="@color/ink"
+          android:maxLines="1"
+          android:ellipsize="end" />
 
       <TextView
           android:id="@+id/studentGroup"
@@ -35,8 +37,20 @@
           android:layout_height="wrap_content"
           android:text=""
           android:textSize="12sp"
-          android:textColor="@color/inkSecondary" />
+          android:textColor="@color/inkSecondary"
+          android:maxLines="1"
+          android:ellipsize="end" />
     </LinearLayout>
+
+    <!-- в горизонтальной ориентации вкладки переезжают сюда -->
+    <LinearLayout
+        android:id="@+id/tabsInHeader"
+        android:orientation="horizontal"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1.5"
+        android:gravity="center_vertical"
+        android:visibility="gone" />
 
     <Button
         android:id="@+id/refreshBtn"
@@ -48,7 +62,7 @@
         android:textSize="13sp" />
   </LinearLayout>
 
-  <!-- Вкладки -->
+  <!-- Вкладки (портретная ориентация) -->
   <LinearLayout
       android:id="@+id/tabBar"
       android:orientation="horizontal"
@@ -156,26 +170,40 @@
           android:scrollbars="none">
 
         <LinearLayout
-            android:orientation="horizontal"
-            android:layout_width="wrap_content"
+            android:orientation="vertical"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content">
 
-          <TableLayout
-              android:id="@+id/subjectsTable"
+          <LinearLayout
+              android:orientation="horizontal"
               android:layout_width="wrap_content"
-              android:layout_height="wrap_content" />
-
-          <HorizontalScrollView
-              android:id="@+id/gradesGridScroll"
-              android:layout_width="wrap_content"
-              android:layout_height="wrap_content"
-              android:scrollbars="none">
+              android:layout_height="wrap_content">
 
             <TableLayout
-                android:id="@+id/gradesTable"
+                android:id="@+id/subjectsTable"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content" />
-          </HorizontalScrollView>
+
+            <HorizontalScrollView
+                android:id="@+id/gradesGridScroll"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:scrollbars="none">
+
+              <TableLayout
+                  android:id="@+id/gradesTable"
+                  android:layout_width="wrap_content"
+                  android:layout_height="wrap_content" />
+            </HorizontalScrollView>
+          </LinearLayout>
+
+          <!-- Итоги прогулов/опозданий под таблицей -->
+          <LinearLayout
+              android:id="@+id/gradesSummary"
+              android:orientation="vertical"
+              android:layout_width="match_parent"
+              android:layout_height="wrap_content"
+              android:padding="12dp" />
         </LinearLayout>
       </ScrollView>
     </LinearLayout>
