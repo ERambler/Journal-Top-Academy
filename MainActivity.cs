@@ -115,6 +115,63 @@ public class MainActivity : Activity
         }
         else Render(snap);
         SwitchTab(0);
+
+        // проверка обновления — один раз за запуск (GitHub Releases)
+        _ = CheckForUpdateAsync();
+    }
+
+    async Task CheckForUpdateAsync()
+    {
+        try
+        {
+            var info = await Updater.CheckAsync(this);
+            if (info is not null)
+                RunOnUiThread(() => ShowUpdateDialog(info));
+        }
+        catch { /* обновление не критично */ }
+    }
+
+    void ShowUpdateDialog(UpdateInfo u)
+    {
+        var box = new LinearLayout(this) { Orientation = Orientation.Vertical };
+        box.SetPadding(Dp(22), Dp(18), Dp(22), Dp(4));
+
+        TextView L(string text, float sp, bool bold, int colorId)
+        {
+            var tv = new TextView(this) { Text = text, TextSize = sp };
+            tv.SetTextColor(C(colorId));
+            if (bold) tv.SetTypeface(null, TypefaceStyle.Bold);
+            return tv;
+        }
+
+        box.AddView(L("Доступно обновление", 18, true, Resource.Color.accent));
+        box.AddView(L($"Версия {u.Version} от {u.Date}", 13, false, Resource.Color.ink));
+
+        if (u.Notes.Count > 0)
+        {
+            var n = L("Новое в версии:", 12, true, Resource.Color.ink);
+            n.SetPadding(0, Dp(12), 0, Dp(2));
+            box.AddView(n);
+            foreach (var note in u.Notes)
+            {
+                var nv = L("•  " + note, 12, false, Resource.Color.inkSecondary);
+                nv.SetPadding(Dp(8), Dp(2), 0, 0);
+                box.AddView(nv);
+            }
+        }
+
+        var scroll = new ScrollView(this);
+        scroll.AddView(box);
+        new AlertDialog.Builder(this)
+            .SetView(scroll)
+            .SetCancelable(false)
+            .SetPositiveButton("Скачать и установить", (_, _) =>
+                Updater.DownloadAndInstall(this, u,
+                    msg => RunOnUiThread(() =>
+                        Toast.MakeText(this, msg, ToastLength.Long)?.Show())))
+            .SetNegativeButton("Пропустить версию", (_, _) => Updater.Skip(this, u.Tag))
+            .SetNeutralButton("Позже", (_, _) => { })
+            .Show();
     }
 
     protected override void OnResume()

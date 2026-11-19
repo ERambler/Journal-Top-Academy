@@ -5,7 +5,7 @@ using Android.Widget;
 
 namespace TopJournal;
 
-/// <summary>Виджет рабочего стола 4×2: сводка по последнему снимку.</summary>
+/// <summary>Виджет рабочего стола: сводка + расписание (сегодня/завтра) + ДЗ.</summary>
 [BroadcastReceiver(Label = "Журнал ТОП", Exported = true)]
 [IntentFilter(new[] { AppWidgetManager.ActionAppwidgetUpdate })]
 [MetaData("android.appwidget.provider", Resource = "@xml/widget_info")]
@@ -37,9 +37,10 @@ public class JournalWidget : AppWidgetProvider
                 views.SetTextViewText(Resource.Id.wAvg, "—");
                 views.SetTextViewText(Resource.Id.wAttend, "откройте приложение");
                 views.SetTextViewText(Resource.Id.wHw, "");
+                views.SetTextViewText(Resource.Id.wSched1, "");
+                views.SetTextViewText(Resource.Id.wSched2, "");
                 views.SetTextViewText(Resource.Id.wHw1, "");
                 views.SetTextViewText(Resource.Id.wHw2, "");
-                views.SetTextViewText(Resource.Id.wHw3, "");
             }
             else
             {
@@ -49,6 +50,7 @@ public class JournalWidget : AppWidgetProvider
                 views.SetTextViewText(Resource.Id.wAttend,
                     $"посещаемость {snap.AttendancePct:0}% · {snap.Visits.Count} занятий");
                 views.SetTextViewText(Resource.Id.wHw, HwSummary(snap));
+                SetScheduleLines(views, snap);
                 SetHomeworkLines(views, snap);
             }
 
@@ -68,7 +70,51 @@ public class JournalWidget : AppWidgetProvider
     }
 
     /// <summary>
-    /// Строки ДЗ в виджет: просроченные (красным) + ближайшие 7 дней.
+    /// Расписание на сегодня (только непрошедшие уроки) и завтра; максимум 2 строки.
+    /// </summary>
+    static void SetScheduleLines(RemoteViews views, Snapshot snap)
+    {
+        var today = DateTime.Today;
+        var tomorrow = today.AddDays(1);
+        var now = DateTime.Now.TimeOfDay;
+
+        static TimeSpan T(string s) =>
+            TimeSpan.TryParse(s, System.Globalization.CultureInfo.InvariantCulture, out var t) ? t : TimeSpan.Zero;
+
+        var lessons = new List<(DateTime Date, ScheduleDto L)>();
+        foreach (var l in snap.Schedule)
+        {
+            if (!DateTime.TryParse(l.Date, out var d)) continue;
+            if (d.Date == today && T(l.FinishedAt) > now) lessons.Add((d, l));   // сегодня, не закончился
+            else if (d.Date == tomorrow) lessons.Add((d, l));                     // завтра целиком
+        }
+
+        var lines = lessons
+            .OrderBy(x => x.Date)
+            .ThenBy(x => T(x.L.StartedAt))
+            .Take(2)
+            .ToList();
+
+        var ids = new[] { Resource.Id.wSched1, Resource.Id.wSched2 };
+        if (lines.Count == 0)
+        {
+            views.SetTextViewText(ids[0], "занятий сегодня и завтра нет");
+            views.SetTextViewText(ids[1], "");
+            return;
+        }
+
+        for (int i = 0; i < ids.Length; i++)
+        {
+            if (i >= lines.Count) { views.SetTextViewText(ids[i], ""); continue; }
+            var (date, l) = lines[i];
+            string when = date.Date == today ? "сегодня" : "завтра";
+            views.SetTextViewText(ids[i],
+                $"{when} {l.StartedAt} {Short(l.SubjectName, 18)} · {Short(l.RoomName, 10)}");
+        }
+    }
+
+    /// <summary>
+    /// Строки ДЗ: просроченные (красным) + ближайшие 7 дней.
     /// Формат: «дата · Предмет — срок» / тема курсивом.
     /// </summary>
     static void SetHomeworkLines(RemoteViews views, Snapshot snap)
@@ -80,15 +126,14 @@ public class JournalWidget : AppWidgetProvider
                          d.Date >= today && d.Date <= today.AddDays(7)))
             .OrderBy(h => h.Status == 0 ? 0 : 1)
             .ThenBy(h => h.CompletionTime)
-            .Take(3)
+            .Take(2)
             .ToList();
 
-        var ids = new[] { Resource.Id.wHw1, Resource.Id.wHw2, Resource.Id.wHw3 };
+        var ids = new[] { Resource.Id.wHw1, Resource.Id.wHw2 };
         if (lines.Count == 0)
         {
             views.SetTextViewText(ids[0], "✓ ДЗ на неделю чисто — всё сдано");
             views.SetTextViewText(ids[1], "");
-            views.SetTextViewText(ids[2], "");
             return;
         }
 
@@ -104,11 +149,9 @@ public class JournalWidget : AppWidgetProvider
 
             var datePart = $"{due:dd.MM} · {Short(h.NameSpec, 18)}";
             var line1 = $"{datePart} — {deadline}";
-            var theme = Short(h.Theme, 46);
-            var full = new Java.Lang.StringBuilder();
+            var theme = Short(h.Theme, 42);
             var ss = new Android.Text.SpannableString($"{line1}\n{theme}");
             var main = new Android.Graphics.Color(overdue ? unchecked((int)0xFFF26D6D) : unchecked((int)0xFFC7CFE4));
-            var dim = new Android.Graphics.Color(unchecked((int)0xFF9AA6C6));
             ss.SetSpan(new Android.Text.Style.ForegroundColorSpan(main), 0, datePart.Length,
                 Android.Text.SpanTypes.InclusiveExclusive);
             ss.SetSpan(new Android.Text.Style.ForegroundColorSpan(
@@ -116,7 +159,7 @@ public class JournalWidget : AppWidgetProvider
                 datePart.Length + 3, line1.Length, Android.Text.SpanTypes.InclusiveExclusive);
             ss.SetSpan(new Android.Text.Style.StyleSpan(Android.Graphics.TypefaceStyle.Italic),
                 line1.Length + 1, ss.Length(), Android.Text.SpanTypes.InclusiveExclusive);
-            ss.SetSpan(new Android.Text.Style.ForegroundColorSpan(dim),
+            ss.SetSpan(new Android.Text.Style.ForegroundColorSpan(new Android.Graphics.Color(unchecked((int)0xFF9AA6C6))),
                 line1.Length + 1, ss.Length(), Android.Text.SpanTypes.InclusiveExclusive);
             views.SetTextViewText(ids[i], ss);
         }
