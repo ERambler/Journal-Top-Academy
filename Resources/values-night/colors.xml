@@ -31,4 +31,6 @@
   <color name="hwTodayInk">#FFC46B</color>
   <color name="hwCheckBg">#262C3D</color>
   <color name="hwCheckInk">#9AA3B8</color>
+
+  <color name="markNew">#5B5320</color>
 </resources>

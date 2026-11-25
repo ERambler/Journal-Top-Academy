@@ -7,12 +7,39 @@ namespace TopJournal;
 
 /// <summary>Виджет рабочего стола: сводка + расписание (сегодня/завтра) + ДЗ.</summary>
 [BroadcastReceiver(Label = "Журнал ТОП", Exported = true)]
-[IntentFilter(new[] { AppWidgetManager.ActionAppwidgetUpdate })]
+[IntentFilter(new[] { AppWidgetManager.ActionAppwidgetUpdate, ActionSyncNow })]
 [MetaData("android.appwidget.provider", Resource = "@xml/widget_info")]
 public class JournalWidget : AppWidgetProvider
 {
+    /// <summary>Тап по дате/⟳ на виджете — синхронизироваться сейчас.</summary>
+    public const string ActionSyncNow = "ru.erambler.topjournal.ACTION_SYNC_NOW";
+
+    public override void OnReceive(Context? context, Intent? intent)
+    {
+        base.OnReceive(context, intent);
+        if (context is null || intent?.Action != ActionSyncNow || !Store.HasCreds(context))
+            return;
+        var pending = GoAsync(); // держим receiver живым на время сети
+        Task.Run(async () =>
+        {
+            try { await SyncService.SyncNowAsync(context); }
+            catch { /* нет сети — не беда */ }
+            finally { pending.Finish(); }
+        });
+    }
+
     public override void OnUpdate(Context context, AppWidgetManager appWidgetManager, int[] appWidgetIds)
-        => Render(context, appWidgetManager, appWidgetIds);
+    {
+        Render(context, appWidgetManager, appWidgetIds);
+        // система перерисовывает виджет каждые 30 мин — заодно тянем свежие данные.
+        // Samsung в Doze откладывает JobScheduler, а виджетные обновления доходят честнее.
+        if (Store.HasCreds(context))
+            Task.Run(async () =>
+            {
+                try { await SyncService.SyncNowAsync(context); }
+                catch { /* нет сети и т.п. — не беда, попробуем позже */ }
+            });
+    }
 
     /// <summary>Перерисовать все экземпляры виджета (вызывается после синхронизации).</summary>
     public static void RenderAll(Context context)
@@ -45,10 +72,10 @@ public class JournalWidget : AppWidgetProvider
             else
             {
                 views.SetTextViewText(Resource.Id.wName, $"{snap.FullName} · {snap.GroupName}");
-                views.SetTextViewText(Resource.Id.wTime, snap.SavedAt);
+                views.SetTextViewText(Resource.Id.wTime, "⟳ " + snap.SavedAt);
                 views.SetTextViewText(Resource.Id.wAvg, snap.Average.ToString("0.0"));
                 views.SetTextViewText(Resource.Id.wAttend,
-                    $"посещаемость {snap.AttendancePct:0}% · {snap.Visits.Count} занятий");
+                    $"посещаемость {Store.AttendancePct(context, snap):0}% · {Store.EffectiveVisits(context, snap).Count} занятий");
                 views.SetTextViewText(Resource.Id.wHw, HwSummary(snap));
                 SetScheduleLines(views, snap);
                 SetHomeworkLines(views, snap);
@@ -56,21 +83,30 @@ public class JournalWidget : AppWidgetProvider
 
             ApplyFontSizes(views, context);
 
-            var intent = new Intent(context, typeof(MainActivity));
-            var pi = PendingIntent.GetActivity(context, 1, intent,
+            // тап по виджету — дневник; тап по ⟳/дате — синхронизация сейчас
+            var open = new Intent(context, typeof(MainActivity));
+            var piOpen = PendingIntent.GetActivity(context, 1, open,
                 PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
-            views.SetOnClickPendingIntent(Resource.Id.widgetRoot, pi);
+            views.SetOnClickPendingIntent(Resource.Id.widgetRoot, piOpen);
+
+            var sync = new Intent(context, typeof(JournalWidget)).SetAction(ActionSyncNow);
+            var piSync = PendingIntent.GetBroadcast(context, 2, sync,
+                PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
+            views.SetOnClickPendingIntent(Resource.Id.wTime, piSync);
 
             mgr.UpdateAppWidget(id, views);
         }
     }
 
-    /// <summary>Размер шрифта виджета из настроек: малый −2sp · средний база · большой +2sp.</summary>
+    /// <summary>
+    /// Размер шрифта виджета из настроек: малый ×0.8 · средний база · большой ×1.4
+    /// (мультипликативно — контраст заметен на любом элементе).
+    /// </summary>
     static void ApplyFontSizes(RemoteViews views, Context context)
     {
-        float k = Store.GetWidgetFont(context) switch { 0 => -2, 2 => +2, _ => 0 };
+        float k = Store.GetWidgetFont(context) switch { 0 => 0.8f, 2 => 1.4f, _ => 1f };
         void Sz(int viewId, float baseSp) =>
-            views.SetTextViewTextSize(viewId, (int)Android.Util.ComplexUnitType.Sp, baseSp + k);
+            views.SetTextViewTextSize(viewId, (int)Android.Util.ComplexUnitType.Sp, baseSp * k);
 
         Sz(Resource.Id.wName, 13);
         Sz(Resource.Id.wTime, 10);

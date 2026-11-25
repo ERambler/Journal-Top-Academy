@@ -102,6 +102,17 @@
         android:text="ДЗ"
         android:textSize="14sp"
         android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/tabAnalytics"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:gravity="center"
+        android:paddingVertical="12dp"
+        android:text="Аналитика"
+        android:textSize="13sp"
+        android:textStyle="bold" />
   </LinearLayout>
 
   <View
@@ -140,10 +151,10 @@
         <TextView
             android:id="@+id/gradesCorner"
             android:layout_width="108dp"
-            android:layout_height="32dp"
+            android:layout_height="26dp"
             android:gravity="center"
             android:text="Предмет"
-            android:textSize="11sp"
+            android:textSize="10sp"
             android:textStyle="bold"
             android:textColor="@color/inkSecondary"
             android:background="@color/gridHeaderBg" />
@@ -232,6 +243,21 @@
 
       <LinearLayout
           android:id="@+id/hwList"
+          android:orientation="vertical"
+          android:layout_width="match_parent"
+          android:layout_height="wrap_content"
+          android:padding="12dp" />
+    </ScrollView>
+
+    <ScrollView
+        android:id="@+id/analyticsScroll"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone"
+        android:scrollbars="none">
+
+      <LinearLayout
+          android:id="@+id/analyticsList"
           android:orientation="vertical"
           android:layout_width="match_parent"
           android:layout_height="wrap_content"

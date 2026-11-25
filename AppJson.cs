@@ -14,4 +14,6 @@ namespace TopJournal;
 [JsonSerializable(typeof(List<CounterDto>))]
 [JsonSerializable(typeof(List<ScheduleDto>))]
 [JsonSerializable(typeof(Snapshot))]
+[JsonSerializable(typeof(List<VacationPeriod>))]
+[JsonSerializable(typeof(HashSet<string>))]
 internal partial class AppJson : JsonSerializerContext;

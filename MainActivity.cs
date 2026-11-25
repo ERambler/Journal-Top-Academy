@@ -23,8 +23,8 @@ public class MainActivity : Activity
     static readonly string[] DayNames =
         { "воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота" };
 
-    const int DateWidthDp = 42;    // ширина ячейки даты
-    const int RowHeightDp = 32;    // базовая высота строки (1 строка текста)
+    const int DateWidthDp = 40;    // ширина ячейки даты
+    const int RowHeightDp = 26;    // базовая высота строки (1 строка текста)
 
     TextView? _name;
     TextView? _group;
@@ -32,6 +32,9 @@ public class MainActivity : Activity
     TextView? _tabGrades;
     TextView? _tabSchedule;
     TextView? _tabHomework;
+    TextView? _tabAnalytics;
+    ScrollView? _analyticsScroll;
+    LinearLayout? _analyticsList;
     TextView? _emptyHint;
     LinearLayout? _gradesRoot;
     TextView? _gradesCorner;
@@ -49,6 +52,7 @@ public class MainActivity : Activity
     int _tab; // 0 оценки · 1 расписание · 2 ДЗ
     bool _syncScroll;
     Snapshot? _snap;
+    HashSet<string> _seenMarks = new(); // виденные оценки — для подсветки новых
 
     int Dp(float v) => (int)(v * Resources!.DisplayMetrics!.Density);
     Color C(int colorId) => Resources!.GetColor(colorId, null!);
@@ -67,6 +71,7 @@ public class MainActivity : Activity
         _tabGrades = FindViewById<TextView>(Resource.Id.tabGrades)!;
         _tabSchedule = FindViewById<TextView>(Resource.Id.tabSchedule)!;
         _tabHomework = FindViewById<TextView>(Resource.Id.tabHomework)!;
+        _tabAnalytics = FindViewById<TextView>(Resource.Id.tabAnalytics)!;
         _emptyHint = FindViewById<TextView>(Resource.Id.emptyHint)!;
         _gradesRoot = FindViewById<LinearLayout>(Resource.Id.gradesRoot)!;
         _gradesCorner = FindViewById<TextView>(Resource.Id.gradesCorner)!;
@@ -80,13 +85,15 @@ public class MainActivity : Activity
         _scheduleList = FindViewById<LinearLayout>(Resource.Id.scheduleList)!;
         _hwScroll = FindViewById<ScrollView>(Resource.Id.hwScroll)!;
         _hwList = FindViewById<LinearLayout>(Resource.Id.hwList)!;
+        _analyticsScroll = FindViewById<ScrollView>(Resource.Id.analyticsScroll)!;
+        _analyticsList = FindViewById<LinearLayout>(Resource.Id.analyticsList)!;
 
         // в альбомной ориентации вкладки переезжают в шапку: больше строк таблицы на экране
         if (Resources!.Configuration.Orientation == Android.Content.Res.Orientation.Landscape)
         {
             var host = FindViewById<LinearLayout>(Resource.Id.tabsInHeader)!;
             var tabBar = FindViewById<LinearLayout>(Resource.Id.tabBar)!;
-            foreach (var tab in new[] { _tabGrades!, _tabSchedule!, _tabHomework! })
+            foreach (var tab in new[] { _tabGrades!, _tabSchedule!, _tabHomework!, _tabAnalytics! })
             {
                 ((ViewGroup)tab.Parent!).RemoveView(tab);
                 tab.SetPadding(0, Dp(10), 0, Dp(10));
@@ -101,6 +108,7 @@ public class MainActivity : Activity
         _tabGrades.Click += (_, _) => SwitchTab(0);
         _tabSchedule.Click += (_, _) => SwitchTab(1);
         _tabHomework.Click += (_, _) => SwitchTab(2);
+        _tabAnalytics.Click += (_, _) => SwitchTab(3);
         _refresh.Click += async (_, _) => await RefreshAsync();
 
         // синхронизация горизонтального скролла: заголовок дат ↔ сетка оценок
@@ -139,43 +147,190 @@ public class MainActivity : Activity
         // проверка обновления — один раз за запуск (GitHub Releases)
         _ = CheckForUpdateAsync();
     }
-
-    /// <summary>Модалка настроек (тап по имени студента): размер шрифта виджета.</summary>
+    /// <summary>
+    /// Модалка настроек (тап по имени студента): размер шрифта виджета,
+    /// периоды отпуск/больничный, синхронизация, фоновая работа.
+    /// </summary>
     void ShowSettings()
     {
-        int current = Store.GetWidgetFont(this);
-
         var box = new LinearLayout(this) { Orientation = Orientation.Vertical };
-        box.SetPadding(Dp(22), Dp(16), Dp(22), Dp(8));
+        var scroll = new ScrollView(this);
+        scroll.AddView(box);
+        var dialog = new AlertDialog.Builder(this)
+            .SetTitle("Настройки")
+            .SetView(scroll)
+            .SetNegativeButton("Закрыть", (_, _) => { })
+            .Show();
+        BuildSettingsBox(box, dialog);
+    }
 
-        var label = new TextView(this) { Text = "Размер шрифта виджета:", TextSize = 13 };
-        label.SetTextColor(C(Resource.Color.ink));
-        box.AddView(label);
+    void BuildSettingsBox(LinearLayout box, Dialog dialog)
+    {
+        box.RemoveAllViews();
+        var settings = box;
+        settings.SetPadding(Dp(22), Dp(12), Dp(22), Dp(8));
 
+        TextView L(string text, float sp, bool bold, int colorId, int padL = 0)
+        {
+            var tv = new TextView(this) { Text = text, TextSize = sp };
+            tv.SetTextColor(C(colorId));
+            if (bold) tv.SetTypeface(null, TypefaceStyle.Bold);
+            tv.SetPadding(Dp(padL), Dp(4), 0, Dp(2));
+            return tv;
+        }
+
+        // --- 1. Размер шрифта виджета
+        settings.AddView(L("Размер шрифта виджета:", 13, true, Resource.Color.ink));
         var rg = new RadioGroup(this);
         var labels = new[] { "Малый", "Средний", "Большой" };
         var radios = new RadioButton[3];
         for (int i = 0; i < 3; i++)
         {
             radios[i] = new RadioButton(this) { Text = labels[i], TextSize = 15 };
-            radios[i].Checked = i == current;
+            radios[i].Checked = i == Store.GetWidgetFont(this);
             rg.AddView(radios[i]);
         }
-        box.AddView(rg);
+        settings.AddView(rg);
 
-        new AlertDialog.Builder(this)
-            .SetTitle("Настройки")
-            .SetView(box)
-            .SetNegativeButton("Отмена", (_, _) => { })
-            .SetPositiveButton("Принять", (_, _) =>
+        // --- показать сданные ДЗ (опция)
+        var showDone = new CheckBox(this) { Text = "Показывать сданные ДЗ (внизу списка)", TextSize = 14 };
+        showDone.Checked = Store.GetShowDoneHw(this);
+        showDone.CheckedChange += (_, e) =>
+        {
+            Store.SetShowDoneHw(this, e.IsChecked);
+            RebuildAfterSettingsChange();
+        };
+        settings.AddView(showDone);
+
+        var applyFont = new Button(this) { Text = "Принять", TextSize = 13 };
+        applyFont.Click += (_, _) =>
+        {
+            for (int i = 0; i < 3; i++)
+                if (radios[i].Checked) { Store.SetWidgetFont(this, i); break; }
+            JournalWidget.RenderAll(this);
+            Toast.MakeText(this, "Размер шрифта применён", ToastLength.Short)?.Show();
+        };
+        settings.AddView(applyFont);
+
+        // --- 2. Отпуск/больничный периоды
+        settings.AddView(L("Отпуск / больничный (не считать прогулы):", 13, true, Resource.Color.ink));
+        settings.AddView(L("Занятия с оценками в эти периоды учитываются", 11, false, Resource.Color.inkSecondary));
+
+        var vacations = Store.GetVacations(this);
+        if (vacations.Count == 0)
+            settings.AddView(L("периодов нет", 12, false, Resource.Color.inkSecondary, 12));
+        for (int i = 0; i < vacations.Count; i++)
+        {
+            var p = vacations[i];
+            var row = new LinearLayout(this) { Orientation = Orientation.Horizontal };
+            row.SetPadding(Dp(12), Dp(4), 0, 0);
+            var text = new TextView(this)
             {
-                for (int i = 0; i < 3; i++)
-                    if (radios[i].Checked) { Store.SetWidgetFont(this, i); break; }
-                JournalWidget.RenderAll(this);
-                Toast.MakeText(this, "Применено — виджет обновлён", ToastLength.Short)?.Show();
-            })
-            .Show();
+                Text = $"{Fmt(p.Start)} — {Fmt(p.End)}",
+                TextSize = 14,
+                LayoutParameters = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WrapContent, 1f),
+            };
+            text.SetTextColor(C(Resource.Color.ink));
+            row.AddView(text);
+
+            var edit = new Button(this) { Text = "Изменить", TextSize = 11 };
+            int idx = i;
+            edit.Click += (_, _) => EditVacation(vacations, idx, () => BuildSettingsBox(box, dialog));
+            row.AddView(edit);
+
+            var del = new Button(this) { Text = "Удалить", TextSize = 11 };
+            del.Click += (_, _) =>
+            {
+                var list = Store.GetVacations(this);
+                list.RemoveAt(idx);
+                Store.SetVacations(this, list);
+                Toast.MakeText(this, "Период удалён — статистика пересчитана", ToastLength.Short)?.Show();
+                RebuildAfterSettingsChange();
+                BuildSettingsBox(box, dialog);
+            };
+            row.AddView(del);
+            settings.AddView(row);
+        }
+
+        var add = new Button(this) { Text = "+ Добавить период", TextSize = 13 };
+        add.Click += (_, _) => EditVacation(vacations, -1, () => BuildSettingsBox(box, dialog));
+        settings.AddView(add);
+
+        // --- 3. Синхронизация и фон
+        settings.AddView(L("Синхронизация и фон:", 13, true, Resource.Color.ink));
+        var syncNow = new Button(this) { Text = "⟳ Синхронизировать сейчас", TextSize = 13 };
+        syncNow.Click += async (_, _) =>
+        {
+            Toast.MakeText(this, "Синхронизация…", ToastLength.Short)?.Show();
+            try { await SyncService.SyncNowAsync(this); }
+            catch (Exception ex)
+            {
+                Toast.MakeText(this, "Ошибка: " + ex.Message, ToastLength.Long)?.Show();
+                return;
+            }
+            RebuildAfterSettingsChange();
+            Toast.MakeText(this, "Готово ✓", ToastLength.Short)?.Show();
+        };
+        settings.AddView(syncNow);
+
+        var battery = new Button(this) { Text = "🔋 Разрешить работу в фоне", TextSize = 13 };
+        battery.Click += (_, _) =>
+        {
+            // Samsung/One UI экономят батарею и откладывают фоновые задачи —
+            // предлагаем исключить приложение из оптимизации
+            try
+            {
+                var intent = new Android.Content.Intent(
+                    Android.Provider.Settings.ActionRequestIgnoreBatteryOptimizations,
+                    Android.Net.Uri.Parse("package:" + PackageName));
+                StartActivity(intent);
+            }
+            catch
+            {
+                Toast.MakeText(this, "Откройте настройки батареи вручную", ToastLength.Long)?.Show();
+            }
+        };
+        settings.AddView(battery);
+        settings.AddView(L("Samsung откладывает фоновые задачи — разрешите фоновую работу", 11, false, Resource.Color.inkSecondary));
     }
+
+    /// <summary>Диалог добавления (idx = -1) или редактирования периода отпуска.</summary>
+    void EditVacation(List<VacationPeriod> current, int idx, Action refresh)
+    {
+        var period = idx >= 0 ? current[idx] : new VacationPeriod();
+        DateTime start = DateTime.TryParse(period.Start, out var s) ? s : DateTime.Today;
+        DateTime end = DateTime.TryParse(period.End, out var e) ? e : DateTime.Today;
+
+        void AskStart() => new DatePickerDialog(this!, (_, e) =>
+        {
+            start = new DateTime(e.Year, e.Month + 1, e.DayOfMonth);
+            if (end < start) end = start;
+            new DatePickerDialog(this!, (_, e2) =>
+            {
+                end = new DateTime(e2.Year, e2.Month + 1, e2.DayOfMonth);
+                var list = Store.GetVacations(this);
+                var np = new VacationPeriod { Start = start.ToString("yyyy-MM-dd"), End = end.ToString("yyyy-MM-dd") };
+                if (idx >= 0) list[idx] = np; else list.Add(np);
+                Store.SetVacations(this, list);
+                Toast.MakeText(this, $"Период {start:dd.MM} — {end:dd.MM} сохранён", ToastLength.Short)?.Show();
+                RebuildAfterSettingsChange();
+                refresh();
+            }, end.Year, end.Month - 1, end.Day).Show();
+        }, start.Year, start.Month - 1, start.Day).Show();
+
+        AskStart();
+    }
+
+    /// <summary>После изменения настроек перечитываем снимок и перерисовываем экран.</summary>
+    void RebuildAfterSettingsChange()
+    {
+        var snap = Store.LoadSnapshot(this);
+        if (snap is not null) Render(snap);
+        JournalWidget.RenderAll(this);
+    }
+
+    static string Fmt(string iso) =>
+        DateTime.TryParse(iso, out var d) ? d.ToString("dd.MM.yyyy") : iso;
 
     async Task CheckForUpdateAsync()
     {
@@ -234,8 +389,22 @@ public class MainActivity : Activity
     protected override void OnResume()
     {
         base.OnResume();
+        // открыли приложение → считаем уведомления просмотренными (снимает бейдж)
+        ((NotificationManager)GetSystemService(NotificationService)!)!.CancelAll();
         var snap = Store.LoadSnapshot(this);
         if (snap is not null) Render(snap);
+    }
+
+    protected override void OnPause()
+    {
+        base.OnPause();
+        // уходя из приложения запоминаем показанные оценки — подсветка «новых» гаснет
+        if (_snap is not null)
+        {
+            var seen = Store.GetSeenMarks(this);
+            seen.UnionWith(Store.AllMarkKeys(_snap));
+            Store.SetSeenMarks(this, seen);
+        }
     }
 
     // ------------------------------------------------------------- refresh
@@ -273,10 +442,12 @@ public class MainActivity : Activity
         PaintTab(_tabGrades!, index == 0);
         PaintTab(_tabSchedule!, index == 1);
         PaintTab(_tabHomework!, index == 2);
+        PaintTab(_tabAnalytics!, index == 3);
         _emptyHint!.Visibility = _snap is null && index == 0 ? ViewStates.Visible : ViewStates.Gone;
         _gradesRoot!.Visibility = index == 0 ? ViewStates.Visible : ViewStates.Gone;
         _scheduleScroll!.Visibility = index == 1 ? ViewStates.Visible : ViewStates.Gone;
         _hwScroll!.Visibility = index == 2 ? ViewStates.Visible : ViewStates.Gone;
+        _analyticsScroll!.Visibility = index == 3 ? ViewStates.Visible : ViewStates.Gone;
     }
 
     void PaintTab(TextView tab, bool active)
@@ -290,11 +461,13 @@ public class MainActivity : Activity
     void Render(Snapshot snap)
     {
         _snap = snap;
+        _seenMarks = Store.GetSeenMarks(this);
         _name!.Text = string.IsNullOrEmpty(snap.FullName) ? "Студент" : snap.FullName;
-        _group!.Text = $"{snap.GroupName}  ·  ср. {snap.Average:0.00}  ·  посещ. {snap.AttendancePct:0}%  ·  {snap.SavedAt}";
+        _group!.Text = $"{snap.GroupName}  ·  ср. {snap.Average:0.00}  ·  посещ. {Store.AttendancePct(this, snap):0}%  ·  {snap.SavedAt}";
         BuildGrades(snap);
         BuildSchedule(snap);
         BuildHomework(snap);
+        BuildAnalytics(snap);
     }
 
     // --------------------------------------------------- вкладка «Оценки»
@@ -339,7 +512,7 @@ public class MainActivity : Activity
             cell.SetTypeface(null, TypefaceStyle.Bold);
             cell.SetTextColor(C(Resource.Color.inkSecondary));
             cell.Background = CellDrawable(C(Resource.Color.gridHeaderBg));
-            cell.LayoutParameters = new LinearLayout.LayoutParams(Dp(DateWidthDp), Dp(32));
+            cell.LayoutParameters = new LinearLayout.LayoutParams(Dp(DateWidthDp), Dp(26));
             _gradesHeaderRow.AddView(cell);
         }
 
@@ -348,7 +521,7 @@ public class MainActivity : Activity
             int rowBg = C(i % 2 == 1 ? Resource.Color.rowAlt : Resource.Color.cardBg);
             var subject = subjects[i];
             bool oneLine = paint.MeasureText(subject) <= fitPx;
-            int rowH = Dp(oneLine ? RowHeightDp : RowHeightDp + 12); // 32 / 44dp
+            int rowH = Dp(oneLine ? RowHeightDp : RowHeightDp + 12); // 26 / 38dp
 
             // закреплённая колонка предмета
             var stv = new TextView(this)
@@ -380,10 +553,16 @@ public class MainActivity : Activity
                 Color color = C(Resource.Color.ink);
 
                 var marks = cells.SelectMany(c => c.Marks.Select(m => m.Mark)).ToList();
+                bool isNew = false;
                 if (marks.Count > 0)
                 {
                     text = string.Join("·", marks);
                     color = MarkColor(marks.Min());
+                    // новая оценка (ставят и задним числом) — светлая подсветка ячейки
+                    foreach (var c in cells)
+                        foreach (var (_, field) in c.Marks)
+                            if (!_seenMarks.Contains(Store.MarkKey(c, field)))
+                                isNew = true;
                 }
                 else if (cells.Any(c => c.StatusWas == 0))
                 {
@@ -394,15 +573,22 @@ public class MainActivity : Activity
                     text = "О"; color = C(Resource.Color.late);
                 }
 
+                // П/О в период отпуск/больничный — не считаются: серые курсивом
+                bool excluded = (text is "П" or "О") && Store.IsExcluded(this, d);
+                if (excluded) color = C(Resource.Color.inkSecondary);
+
                 var tv = new TextView(this)
                 {
                     Text = text,
-                    TextSize = 11,
+                    TextSize = 12,
                     Gravity = GravityFlags.Center,
                 };
                 tv.SetTextColor(color);
-                if (marks.Count > 0 || text.Length > 0) tv.SetTypeface(null, TypefaceStyle.Bold);
-                tv.Background = CellDrawable(rowBg);
+                if (excluded) tv.SetTypeface(null, TypefaceStyle.Italic);
+                else if (marks.Count > 0 || text.Length > 0) tv.SetTypeface(null, TypefaceStyle.Bold);
+                tv.Background = isNew
+                    ? CellDrawable(C(Resource.Color.markNew))
+                    : CellDrawable(rowBg);
                 grow.AddView(tv, new TableRow.LayoutParams(Dp(DateWidthDp), rowH));
             }
             _gradesTable.AddView(grow, new TableLayout.LayoutParams(
@@ -425,8 +611,9 @@ public class MainActivity : Activity
     void BuildGradesSummary(Snapshot snap)
     {
         var box = _gradesSummary!;
-        int totalAbs = snap.Visits.Count(v => v.StatusWas == 0);
-        int totalLate = snap.Visits.Count(v => v.StatusWas == 2);
+        var visits = Store.EffectiveVisits(this, snap); // без прогулов в отпуск/больничный
+        int totalAbs = visits.Count(v => v.StatusWas == 0);
+        int totalLate = visits.Count(v => v.StatusWas == 2);
 
         var title = new TextView(this)
         {
@@ -438,7 +625,7 @@ public class MainActivity : Activity
         title.SetPadding(Dp(4), Dp(12), Dp(4), Dp(2));
         box.AddView(title);
 
-        var perSubject = snap.Visits
+        var perSubject = visits
             .GroupBy(v => v.SpecName)
             .Select(g => (Name: g.Key,
                 Abs: g.Count(v => v.StatusWas == 0),
@@ -470,7 +657,7 @@ public class MainActivity : Activity
 
         var legend = new TextView(this)
         {
-            Text = "П — прогул · О — опоздание · нажмите на строку для деталей",
+            Text = "П — прогул · О — опоздание · серые курсивом — отпуск/больничный · подсвечено — новые оценки · тап по строке — детали",
             TextSize = 10,
         };
         legend.SetTextColor(C(Resource.Color.inkSecondary));
@@ -653,6 +840,236 @@ public class MainActivity : Activity
         }
     }
 
+    // ----------------------------------------------- вкладка «Аналитика»
+
+    /// <summary>
+    /// Семь карточек аналитики: динамика, прогноз, перелом, радар, предметы,
+    /// прогулы по дням, лаг-эффект. Методика — в Analytics.cs и docs/ANALYTICS.md.
+    /// </summary>
+    void BuildAnalytics(Snapshot snap)
+    {
+        var box = _analyticsList!;
+        box.RemoveAllViews();
+
+        LinearLayout Card()
+        {
+            var c = new LinearLayout(this) { Orientation = Orientation.Vertical };
+            c.SetPadding(Dp(14), Dp(10), Dp(14), Dp(10));
+            c.Background = Round(C(Resource.Color.cardBg), 14);
+            var lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, ViewGroup.LayoutParams.WrapContent);
+            lp.SetMargins(0, 0, 0, Dp(8));
+            c.LayoutParameters = lp;
+            return c;
+        }
+
+        TextView L(string text, float sp, bool bold, int colorId, int padL = 0)
+        {
+            var tv = new TextView(this) { Text = text, TextSize = sp };
+            tv.SetTextColor(C(colorId));
+            if (bold) tv.SetTypeface(null, TypefaceStyle.Bold);
+            tv.SetPadding(Dp(padL), Dp(2), 0, Dp(2));
+            tv.SetLineSpacing(Dp(2), 1.0f);
+            return tv;
+        }
+
+        // вся аналитика — на «эффективных» занятиях (без прогулов в отпуск/больничный)
+        var snapF = new Snapshot
+        {
+            SavedAt = snap.SavedAt,
+            FullName = snap.FullName,
+            GroupName = snap.GroupName,
+            Visits = Store.EffectiveVisits(this, snap),
+            Homework = snap.Homework,
+            Schedule = snap.Schedule,
+            Counters = snap.Counters,
+        };
+
+        var pts = Analytics.AllMarks(snapF);
+        var xs = pts.Select(p => p.Date.ToOADate()).ToList();
+        var ys = pts.Select(p => (double)p.Mark).ToList();
+        double slope = pts.Count >= 30 ? Analytics.TheilSlope(xs, ys) * 30.4 : 0;
+        var mk = pts.Count >= 30 ? Analytics.MannKendall(ys) : (Tau: 0.0, P: 1.0);
+
+        // ============================ СИГНАЛЫ ДЛЯ РОДИТЕЛЕЙ ============================
+        {
+            var signals = new List<(string Text, int ColorId)>();
+
+            int overdue = snap.Counters.TryGetValue(0, out var ov) ? ov : 0;
+            if (overdue > 0)
+                signals.Add(("⚠ Просрочено ДЗ: " + overdue + " — стоит сдать", Resource.Color.mark2));
+
+            var last14 = snapF.Visits.Where(v => DateTime.TryParse(v.DateVisit, out var d) && d >= DateTime.Today.AddDays(-14)).ToList();
+            int abs14 = last14.Count(v => v.StatusWas == 0);
+            if (abs14 >= 2)
+                signals.Add(("⚠ За последние 2 недели " + abs14 + " прогулов", Resource.Color.mark2));
+
+            double att = Store.AttendancePct(this, snap);
+            if (att < 70 && snapF.Visits.Count >= 10)
+                signals.Add(("⚠ Посещаемость низкая: " + att.ToString("0") + "%", Resource.Color.mark2));
+
+            if (mk.P < 0.05 && slope < -0.05)
+                signals.Add(("⚠ Оценки снижаются: " + slope.ToString("0.00") + " балла в месяц", Resource.Color.mark2));
+
+            var lowRecent = pts.Where(p => p.Date >= DateTime.Today.AddDays(-7) && p.Mark <= 3).ToList();
+            if (lowRecent.Count > 0)
+                signals.Add(("⚠ За неделю: " + lowRecent.Count + " оценок ≤3 (" +
+                    string.Join(", ", lowRecent.Select(p => p.Mark + " (" + p.Field + ")").Take(3)) + ")", Resource.Color.mark2));
+
+            var lateHw = snapF.Homework.Where(h => h.Status == 3 && DateTime.TryParse(h.CompletionTime, out var d) && d < DateTime.Today).ToList();
+            if (lateHw.Count > 0)
+                signals.Add(("⚠ Срок " + lateHw.Count + " ДЗ уже прошёл, не сдано", Resource.Color.mark3));
+
+            if (signals.Count > 0)
+            {
+                var card = Card();
+                card.Background = Round(C(Resource.Color.hwOverdueBg), 14);
+                card.AddView(L("ВНИМАНИЕ", 14, true, Resource.Color.hwOverdueInk));
+                foreach (var s in signals.Take(6))
+                    card.AddView(L(s.Text, 13, false, s.ColorId == 0 ? Resource.Color.mark2 : s.ColorId));
+                box.AddView(card);
+            }
+        }
+
+        // ============================ 1. ДИНАМИКА ============================
+        {
+            var card = Card();
+            card.AddView(L("📈 Динамика", 14, true, Resource.Color.accent));
+            if (pts.Count >= 30)
+            {
+                if (mk.P < 0.05 && slope > 0.05)
+                    card.AddView(L($"Оценки растут: примерно +{slope:0.0} балла в месяц — так держать!", 13, true, Resource.Color.mark5));
+                else if (mk.P < 0.05 && slope < -0.05)
+                    card.AddView(L($"Оценки опускаются: −{Math.Abs(slope):0.0} балла в месяц", 13, true, Resource.Color.mark2));
+                else
+                    card.AddView(L("Оценки держатся на одном уровне — роста или падения нет", 13, true, Resource.Color.ink));
+                var months = Analytics.MonthlyAdjusted(snapF);
+                string[] mn = { "янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек" };
+                var line = string.Join(" → ", months.Select(m => $"{mn[int.Parse(m.Month[..2]) - 1]} {m.Raw:0.0}"));
+                card.AddView(L(line, 11, false, Resource.Color.inkSecondary));
+            }
+            else card.AddView(L($"Нужно ≥30 оценок, пока {pts.Count}", 12, false, Resource.Color.inkSecondary));
+            box.AddView(card);
+        }
+
+        // ============================ 2. ПРОГНОЗ ============================
+        {
+            var card = Card();
+            card.AddView(L("🔮 Прогноз", 14, true, Resource.Color.accent));
+            var weekly = pts.GroupBy(p => (int)((p.Date - pts[0].Date).TotalDays / 7))
+                .OrderBy(g => g.Key).Select(g => g.Average(x => (double)x.Mark)).ToList();
+            if (weekly.Count >= 5)
+            {
+                var (lvl, sl, fc, band) = Analytics.KalmanForecast(weekly, 4);
+                string b = double.IsNaN(band) ? "" : $"±{band:0.0}";
+                card.AddView(L($"Если темп не изменится — через месяц ≈ {Math.Clamp(fc, 1, 5):0.0}{b}", 13, true, Resource.Color.ink));
+                card.AddView(L(sl >= 0 ? "направление вверх, модель замечает изменения за 1–2 недели" : "направление вниз — стоит вмешаться", 11, false, sl >= 0 ? Resource.Color.mark5 : Resource.Color.mark3));
+            }
+            else card.AddView(L("Нужно ≥5 недель с оценками", 12, false, Resource.Color.inkSecondary));
+            box.AddView(card);
+        }
+
+        // ============================ 3. ПЕРЕЛОМ ============================
+        {
+            var card = Card();
+            card.AddView(L("⚡ Перелом", 14, true, Resource.Color.accent));
+            var cp = Analytics.ChangePoint(pts);
+            if (cp is { } v && v.Date is { } d && pts.Count >= 30)
+            {
+                string dir = v.Delta >= 0 ? "вырос" : "просел";
+                int col = v.Delta >= 0 ? Resource.Color.mark5 : Resource.Color.mark2;
+                card.AddView(L($"После {d:dd.MM} уровень {dir} на {Math.Abs(v.Delta):0.0} балла", 13, true, col));
+                card.AddView(L($"уверенность {(v.Prob * 100):0}%", 11, false, Resource.Color.inkSecondary));
+            }
+            else
+                card.AddView(L(pts.Count < 30 ? "Нужно ≥30 оценок" : "Резких смен уровня не было — ровная траектория", 12, false, Resource.Color.inkSecondary));
+            box.AddView(card);
+        }
+
+        // ============================ 4. ПРОФИЛЬ ============================
+        {
+            var card = Card();
+            card.AddView(L("🕸 Профиль специалиста", 14, true, Resource.Color.accent));
+            var axes = Analytics.ComputeRadar(snapF);
+            var radar = new RadarView(this,
+                new[] { "Знания", "Дисциплина", "Самост.", "Динамика" },
+                new double?[] { axes.Knowledge, axes.Discipline, axes.Independence, axes.Dynamics },
+                Argb(C(Resource.Color.accent)), Argb(C(Resource.Color.inkSecondary)));
+            var rlp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, Dp(280));
+            rlp.Gravity = GravityFlags.Center;
+            radar.LayoutParameters = rlp;
+            card.AddView(radar);
+            card.AddView(L($"Знания {RadarFmt(axes.Knowledge)} — что уже выучил · Дисциплина {RadarFmt(axes.Discipline)} — ходит и сдаёт вовремя", 10, false, Resource.Color.inkSecondary));
+            card.AddView(L($"Самостоятельность {RadarFmt(axes.Independence)} — решает ли без помощи · Динамика {RadarFmt(axes.Dynamics)} — куда движется", 10, false, Resource.Color.inkSecondary));
+            box.AddView(card);
+        }
+
+        // ============================ 5. ПРЕДМЕТЫ ============================
+        {
+            var card = Card();
+            card.AddView(L("📚 Предметы", 14, true, Resource.Color.accent));
+            var stats = Analytics.SubjectStats(snapF);
+            if (stats.Count > 0)
+            {
+                var strong = stats.OrderByDescending(s => s.Shrunk).Take(3).ToList();
+                var weak = stats.OrderBy(s => s.Shrunk).Take(3).ToList();
+                card.AddView(L("Сильные: " + string.Join(", ", strong.Select(s => $"{Short2(s.Name)} {s.Shrunk:0.0}")), 12, false, Resource.Color.mark5));
+                card.AddView(L("Требуют внимания: " + string.Join(", ", weak.Select(s => $"{Short2(s.Name)} {s.Shrunk:0.0}")), 12, false, Resource.Color.mark3));
+            }
+            box.AddView(card);
+        }
+
+        // ============================ 6. ПРОГУЛЫ ============================
+        {
+            var card = Card();
+            card.AddView(L("📅 Прогулы", 14, true, Resource.Color.accent));
+            var rates = Analytics.WeekdayAbsenceRates(snapF);
+            if (rates.Count > 0 && rates[0].RatePer10 > 0)
+                card.AddView(L($"Чаще всего пропускает {rates[0].Day} ({rates[0].RatePer10 * 10:0}% занятий этого дня)", 13, true, Resource.Color.mark2));
+            else
+                card.AddView(L("Прогулов нет 👍", 13, true, Resource.Color.mark5));
+            card.AddView(L("отпуск/больничный не считаются", 10, false, Resource.Color.inkSecondary));
+            box.AddView(card);
+        }
+
+        // ============================ 7. ЛАГ ============================
+        {
+            var card = Card();
+            card.AddView(L("🔗 Прогулы → оценки", 14, true, Resource.Color.accent));
+            var lag = Analytics.AbsenceLag(snapF);
+            if (lag is { } l)
+            {
+                if (l.Diff < -0.15)
+                    card.AddView(L($"После прогулов оценки ниже на {Math.Abs(l.Diff):0.0} балла в ближайшие дни", 13, true, Resource.Color.mark2));
+                else if (l.Diff > 0.15)
+                    card.AddView(L("После прогулов студент наверстывает — оценки не ниже обычного", 13, true, Resource.Color.mark4));
+                else
+                    card.AddView(L("Заметной связи прогулов с оценками не найдено", 13, true, Resource.Color.ink));
+            }
+            else card.AddView(L("Недостаточно данных", 12, false, Resource.Color.inkSecondary));
+            box.AddView(card);
+        }
+
+        // тап по карточке — страница с методикой, инфографикой и выводами
+        // (сигнальный блок сверху, если есть, — не кликабельный)
+        int first = box.ChildCount == 8 ? 1 : 0; // 8 = сигнал + 7 карточек
+        for (int i = first; i < box.ChildCount; i++)
+        {
+            var cardView = box.GetChildAt(i)!;
+            int detail = i - first;
+            cardView.Clickable = true;
+            cardView.Click += (_, _) => StartActivity(
+                new Android.Content.Intent(this, typeof(AnalyticsDetailActivity)).PutExtra("card", detail));
+        }
+    }
+
+    static string Short2(string s)
+    {
+        var words = s.Split(' ').Where(w => w != "КБ" && w != "РПО").ToArray();
+        var name = string.Join(" ", words);
+        return name.Length <= 14 ? name : name[..13] + "…";
+    }
+    static string RadarFmt(double? v) => v is null ? "—" : v.Value.ToString("0");
+
     // ------------------------------------------------------ вкладка «ДЗ»
 
     void BuildHomework(Snapshot snap)
@@ -693,6 +1110,40 @@ public class MainActivity : Activity
         }
         foreach (var h in onCheck)
             box.AddView(HwCard(h, today));
+
+        // сданные — за разделителем, полупрозрачные (опция настроек)
+        if (Store.GetShowDoneHw(this))
+        {
+            var done = snap.Homework
+                .Where(h => h.Status == 1)
+                .OrderByDescending(h => h.Stud?.CreationTime ?? h.CompletionTime)
+                .ToList();
+            if (done.Count > 0)
+            {
+                var sep = new View(this);
+                sep.SetBackgroundColor(C(Resource.Color.gridLine));
+                var slp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MatchParent, Dp(1));
+                slp.SetMargins(0, Dp(14), 0, Dp(10));
+                sep.LayoutParameters = slp;
+                box.AddView(sep);
+
+                var cap = new TextView(this)
+                {
+                    Text = $"Сдано и проверено — {done.Count}",
+                    TextSize = 12,
+                };
+                cap.SetTextColor(C(Resource.Color.inkSecondary));
+                cap.SetPadding(Dp(4), 0, Dp(4), Dp(6));
+                box.AddView(cap);
+
+                foreach (var h in done)
+                {
+                    var card = HwCard(h, today);
+                    card.Alpha = 0.55f; // «замыленно»: видно, что уже сдано
+                    box.AddView(card);
+                }
+            }
+        }
     }
 
     /// <summary>0 — истекает сегодня, 1 — просрочено, 2 — предстоящее, 3 — на проверке.</summary>
@@ -861,8 +1312,7 @@ public class MainActivity : Activity
             .Show();
     }
 
-    static string Fmt(string iso) =>
-        DateTime.TryParse(iso, out var d) ? d.ToString("dd.MM.yyyy") : iso;
+    // (Fmt уже объявлен рядом с настройками — форматирует дату периода)
 
     /// <summary>
     /// Скачивание файла ДЗ: fs.top-academy.ru отвечает 302 на подписанный S3-URL,

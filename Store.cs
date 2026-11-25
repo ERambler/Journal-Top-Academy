@@ -52,6 +52,111 @@ public static class Store
         ctx.GetSharedPreferences(PrefsName, FileCreationMode.Private)!.Edit()!
             .PutInt("widget_font", value).Apply();
 
+    // -------------------------------------------- отпуск/больничный периоды
+
+    /// <summary>Список периодов отпуск/больничный (глобальные настройки).</summary>
+    public static List<VacationPeriod> GetVacations(Context ctx)
+    {
+        try
+        {
+            var raw = ctx.GetSharedPreferences(PrefsName, FileCreationMode.Private)!
+                .GetString("vacations", null);
+            return string.IsNullOrEmpty(raw)
+                ? new List<VacationPeriod>()
+                : JsonSerializer.Deserialize(raw, AppJson.Default.ListVacationPeriod) ?? new();
+        }
+        catch { return new List<VacationPeriod>(); }
+    }
+
+    public static void SetVacations(Context ctx, List<VacationPeriod> periods) =>
+        ctx.GetSharedPreferences(PrefsName, FileCreationMode.Private)!.Edit()!
+            .PutString("vacations", JsonSerializer.Serialize(periods, AppJson.Default.ListVacationPeriod))
+            .Apply();
+
+    /// <summary>Дата занятия попадает в период отпуск/больничный?</summary>
+    public static bool IsExcluded(Context ctx, string dateIso)
+    {
+        if (!DateTime.TryParse(dateIso, out var d)) return false;
+        foreach (var p in GetVacations(ctx))
+            if (DateTime.TryParse(p.Start, out var s) && DateTime.TryParse(p.End, out var e) &&
+                d.Date >= s.Date && d.Date <= e.Date)
+                return true;
+        return false;
+    }
+
+    /// <summary>
+    /// Эффективные занятия для статистики: из периодов отпуск/больничный выбрасываются
+    /// только прогулы/опоздания (занятия без оценок); «был» и уроки с оценками остаются.
+    /// </summary>
+    public static List<VisitDto> EffectiveVisits(Context ctx, Snapshot snap)
+    {
+        var vacations = GetVacations(ctx);
+        if (vacations.Count == 0) return snap.Visits;
+
+        bool InVacation(string iso)
+        {
+            if (!DateTime.TryParse(iso, out var d)) return false;
+            foreach (var p in vacations)
+                if (DateTime.TryParse(p.Start, out var s) && DateTime.TryParse(p.End, out var e) &&
+                    d.Date >= s.Date && d.Date <= e.Date)
+                    return true;
+            return false;
+        }
+
+        return snap.Visits
+            .Where(v => !(InVacation(v.DateVisit) && v.StatusWas != 1 && !v.Marks.Any()))
+            .ToList();
+    }
+
+    /// <summary>Посещаемость с учётом отпуск/больничный (для шапки и виджета).</summary>
+    public static double AttendancePct(Context ctx, Snapshot snap)
+    {
+        var visits = EffectiveVisits(ctx, snap);
+        if (visits.Count == 0) return 0;
+        return 100.0 * visits.Count(v => v.StatusWas is 1 or 2) / visits.Count;
+    }
+
+    // ----------------------------------------------- виденные оценки / опции
+
+    /// <summary>Ключ оценки (тот же формат, что и в Diff) — для подсветки новых.</summary>
+    public static string MarkKey(VisitDto v, string field) =>
+        $"{v.DateVisit}|{v.LessonNumber}|{v.SpecId}|{field}";
+
+    /// <summary>Ключи всех оценок снимка.</summary>
+    public static HashSet<string> AllMarkKeys(Snapshot snap)
+    {
+        var set = new HashSet<string>();
+        foreach (var v in snap.Visits)
+            foreach (var (_, field) in v.Marks)
+                set.Add(MarkKey(v, field));
+        return set;
+    }
+
+    /// <summary>Виденные пользователем оценки (подсветка «новых» гаснет после просмотра).</summary>
+    public static HashSet<string> GetSeenMarks(Context ctx)
+    {
+        try
+        {
+            var raw = ctx.GetSharedPreferences(PrefsName, FileCreationMode.Private)!.GetString("seen_marks", null);
+            return string.IsNullOrEmpty(raw)
+                ? new HashSet<string>()
+                : JsonSerializer.Deserialize(raw, AppJson.Default.HashSetString) ?? new();
+        }
+        catch { return new HashSet<string>(); }
+    }
+
+    public static void SetSeenMarks(Context ctx, HashSet<string> keys) =>
+        ctx.GetSharedPreferences(PrefsName, FileCreationMode.Private)!.Edit()!
+            .PutString("seen_marks", JsonSerializer.Serialize(keys, AppJson.Default.HashSetString)).Apply();
+
+    /// <summary>Показывать сданные ДЗ внизу списка (опция настроек).</summary>
+    public static bool GetShowDoneHw(Context ctx) =>
+        ctx.GetSharedPreferences(PrefsName, FileCreationMode.Private)!.GetBoolean("show_done_hw", false);
+
+    public static void SetShowDoneHw(Context ctx, bool value) =>
+        ctx.GetSharedPreferences(PrefsName, FileCreationMode.Private)!.Edit()!
+            .PutBoolean("show_done_hw", value).Apply();
+
     // ------------------------------------------------------------- snapshot
 
     static string SnapshotPath(Context ctx) =>

@@ -100,6 +100,16 @@ public class ScheduleDto
     [JsonPropertyName("room_name")] public string RoomName { get; set; } = "";
 }
 
+/// <summary>
+/// Период отпуск/больничный: занятия в нём исключаются из статистики посещаемости
+/// и аналитики (прогулы не считаются), оценки сохраняются.
+/// </summary>
+public class VacationPeriod
+{
+    [JsonPropertyName("start")] public string Start { get; set; } = "";
+    [JsonPropertyName("end")] public string End { get; set; } = "";
+}
+
 /// <summary>Локальный снимок всего, что нужно UI и виджету.</summary>
 public class Snapshot
 {
